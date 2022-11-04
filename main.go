@@ -25,6 +25,8 @@ import (
 // TODO: This only matches ASCII word boundaries!
 var wordBoundaryRegex = regexp.MustCompile(`\b`)
 
+var sgrEscapeSequenceRegex = regexp.MustCompile(`\x1B\[[0-9;:]*m`)
+
 func bytePosToCharacterPos(text string, bytePos int) int {
 	if bytePos == len(text) {
 		return utf8.RuneCountInString(text)
@@ -52,6 +54,8 @@ type engine struct {
 	history       *history
 	historyPrefix string
 	historyIndex  uint32
+
+	startTime time.Time
 }
 
 func (e *engine) exit() {
@@ -176,10 +180,15 @@ func (e *engine) ProcessKeyEvent(keyval uint32, keycode uint32, state uint32) (b
 		e.clearText()
 
 		if err == nil || isExitError {
+			// Remove SGR escape sequences (text attributes) from output.
+			// This is a workaround for programs that emit escape sequences
+			// regardless of whether they are writing to a TTY or not.
+			outputText := sgrEscapeSequenceRegex.ReplaceAllString(string(output), "")
+
 			// Remove leading and trailing newlines from output
 			// to allow single-line output to flow into the
 			// surrounding text ...
-			outputText := strings.Trim(string(output), "\n")
+			outputText = strings.Trim(outputText, "\n")
 
 			// ... but place multi-line output in a separate
 			// block surrounded by newlines, so that tabular
@@ -337,15 +346,123 @@ func (e *engine) ProcessKeyEvent(keyval uint32, keycode uint32, state uint32) (b
 	return true, nil
 }
 
+func (e *engine) SetCursorLocation(x int32, y int32, w int32, h int32) *dbus.Error {
+	log.Printf("SetCursorLocation(x = %v, y = %v, w = %v, h = %v)", x, y, w, h)
+
+	return nil
+}
+
+func (e *engine) SetSurroundingText(text dbus.Variant, cursor_index uint32, anchor_pos uint32) *dbus.Error {
+	log.Printf("SetSurroundingText(text = %v, cursor_index = %v, anchor_pos = %v)", text, cursor_index, anchor_pos)
+
+	return nil
+}
+
+func (e *engine) SetCapabilities(cap uint32) *dbus.Error {
+	log.Printf("SetCapabilities(cap = %v)", cap)
+
+	return nil
+}
+
+func (e *engine) FocusIn() *dbus.Error {
+	log.Printf("FocusIn()")
+
+	return nil
+}
+
 func (e *engine) FocusOut() *dbus.Error {
+	log.Printf("FocusOut()")
+
+	if time.Since(e.startTime) < 250*time.Millisecond {
+		log.Printf("FocusOut was quickly after starting. Skipping exit")
+	} else {
+		e.clearText()
+		e.exit()
+	}
+
+	return nil
+}
+
+func (e *engine) Reset() *dbus.Error {
+	log.Printf("Reset()")
+
 	e.clearText()
 	e.exit()
 
 	return nil
 }
 
+func (e *engine) PageUp() *dbus.Error {
+	log.Printf("PageUp()")
+
+	return nil
+}
+
+func (e *engine) PageDown() *dbus.Error {
+	log.Printf("PageDown()")
+
+	return nil
+}
+
+func (e *engine) CursorUp() *dbus.Error {
+	log.Printf("CursorUp()")
+
+	return nil
+}
+
+func (e *engine) CursorDown() *dbus.Error {
+	log.Printf("CursorDown()")
+
+	return nil
+}
+
+func (e *engine) CandidateClicked(index uint32, button uint32, state uint32) *dbus.Error {
+	log.Printf("CandidateClicked(index = %v, button = %v, state = %v)", index, button, state)
+
+	return nil
+}
+
+func (e *engine) Enable() *dbus.Error {
+	log.Printf("Enable()")
+
+	e.startTime = time.Now()
+
+	return nil
+}
+
+func (e *engine) Disable() *dbus.Error {
+	log.Printf("Disable()")
+
+	return nil
+}
+
+func (e *engine) PropertyActivate(prop_name string, prop_state uint32) *dbus.Error {
+	log.Printf("PropertyActivate(prop_name = %v, prop_state = %v)", prop_name, prop_state)
+
+	return nil
+}
+
+func (e *engine) PropertyShow(prop_name string) *dbus.Error {
+	log.Printf("PropertyShow(prop_name = %v)", prop_name)
+
+	return nil
+}
+
+func (e *engine) PropertyHide(prop_name string) *dbus.Error {
+	log.Printf("PropertyHide(prop_name = %v)", prop_name)
+
+	return nil
+}
+
+func (e *engine) Destroy() *dbus.Error {
+	log.Printf("Destroy()")
+
+	return e.Engine.Destroy()
+}
+
 func main() {
 	log.SetPrefix("[Shin] ")
+	log.SetFlags(log.Ltime | log.Lmicroseconds)
 
 	log.Printf("Starting")
 
@@ -362,6 +479,8 @@ func main() {
 
 	ibus.NewFactory(connection, func(connection *dbus.Conn, engineName string) dbus.ObjectPath {
 		engineId++
+
+		log.Printf("Creating engine %v", engineId)
 
 		path := dbus.ObjectPath(fmt.Sprintf("%v/%v", engineBasePath, engineId))
 
