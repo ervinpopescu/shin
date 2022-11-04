@@ -168,7 +168,7 @@ func (e *engine) ProcessKeyEvent(keyval uint32, keycode uint32, state uint32) (b
 		binDirectory := filepath.Join(xdg.ConfigHome, "shin", "bin")
 		commandText := fmt.Sprintf(`PATH="%v:$PATH" && %v`, binDirectory, e.text)
 
-		command := exec.Command("bash", "-c", commandText)
+		command := exec.Command("zsh", "-c", commandText)
 		output, err := command.CombinedOutput()
 
 		_, isExitError := err.(*exec.ExitError)
